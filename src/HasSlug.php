@@ -41,7 +41,7 @@ trait HasSlug
             }
         }
 
-        $this->addSlug();
+        $this->addSlug(true);
     }
 
     protected function generateSlugOnUpdate(): void
@@ -72,11 +72,11 @@ trait HasSlug
         $this->addSlug();
     }
 
-    protected function addSlug(): void
+    protected function addSlug(bool $create = false): void
     {
         $this->ensureValidSlugOptions();
 
-        $slug = $this->generateNonUniqueSlug();
+        $slug = $this->generateNonUniqueSlug($create);
 
         if ($this->slugOptions->generateUniqueSlugs) {
             $slug = $this->makeSlugUnique($slug);
@@ -87,7 +87,7 @@ trait HasSlug
         $this->$slugField = $slug;
     }
 
-    protected function generateNonUniqueSlug(): string
+    protected function generateNonUniqueSlug(bool $create = false): string
     {
         $slugField = $this->slugOptions->slugField;
 
@@ -95,7 +95,7 @@ trait HasSlug
             return $this->$slugField;
         }
 
-        return Str::slug($this->getSlugSourceString(), $this->slugOptions->slugSeparator, $this->slugOptions->slugLanguage);
+        return Str::slug($this->getSlugSourceString($create), $this->slugOptions->slugSeparator, $this->slugOptions->slugLanguage);
     }
 
     protected function hasCustomSlugBeenUsed(): bool
@@ -105,7 +105,7 @@ trait HasSlug
         return $this->getOriginal($slugField) != $this->$slugField;
     }
 
-    protected function getSlugSourceString(): string
+    protected function getSlugSourceString(bool $create = false): string
     {
         if (is_callable($this->slugOptions->generateSlugFrom)) {
             $slugSourceString = $this->getSlugSourceStringFromCallable();
@@ -114,7 +114,14 @@ trait HasSlug
         }
 
         $slugSourceString = collect($this->slugOptions->generateSlugFrom)
-            ->map(fn (string $fieldName): string => data_get($this, $fieldName, ''))
+            ->map(function (string $fieldName) use ($create): string {
+                if ($fieldName === "id" && $create === true) {
+                    $tableName = $this->getTable();
+                    $nextID = (\Illuminate\Support\Facades\DB::select("SHOW TABLE STATUS LIKE '" . $tableName . "'",))[0]->Auto_increment;
+                    return $nextID;
+                }
+                return data_get($this, $fieldName, '');
+            })
             ->implode($this->slugOptions->slugSeparator);
 
         return $this->generateSubstring($slugSourceString);
